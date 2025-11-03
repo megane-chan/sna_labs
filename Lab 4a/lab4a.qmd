@@ -1,0 +1,546 @@
+---
+title: "Lab 4a"
+author: "Your Name"
+date: today
+format: 
+  pdf:
+      output-file: "lab4a_your_name"
+      output-ext: "pdf"
+      toc: true
+      toc-depth: 4
+      shift-heading-level-by: 2
+      fig-pos: "H"
+      fig-cap-location: top
+      geometry:
+        - top=1in
+        - right=.8in
+        - bottom=1in
+        - left=.8in
+      link-citations: true
+      linkcolor: blue
+      include-in-header: 
+        text: |
+          \usepackage{fancyhdr}
+          \usepackage{titling}
+          \pagestyle{fancy}
+          \fancyhf{}
+          \renewcommand\maketitle{
+            \fancyhead[C]{
+              \thetitle
+              \ifx \theauthor\empty  \else \ – \theauthor \fi
+              \ifx \thedate\empty  \else \ – \thedate \ \fi
+            }
+          }
+          \fancyfoot[C]{\thepage}
+---
+
+::: {.callout-note style="color: purple"}
+**Important Note:** For Lab 4, you can choose between either Lab 4a [**OR**]{.underline} Lab 4b. You do not need to complete both.
+:::
+
+```{r}
+#| label: libraries
+#| echo: false
+#| output: false
+#| message: false
+
+# Start with a clear environment
+rm(list=ls())
+
+# Load necessary packages
+if (!"devtools" %in% installed.packages()) install.packages("devtools") ## for the install_version function
+library(devtools)
+if (!"RSiena" %in% installed.packages()) install.packages("RSiena") ## install latest version of RSiena if you don't have it already, it can take ~10 minutes
+# install_version("RSiena",version="1.2-23") # talk to a TA before uncommenting/using this line of code 
+library(RSiena)
+packageVersion("RSiena")
+library(statnet)
+
+# ---------------------------------------------------------------------------------------------
+# Set the working directory:
+# Session > Set Working Directory > To Source File Location
+# ---------------------------------------------------------------------------------------------
+list.files() # List the files in the current working directory to see if you're in the right directory
+
+# For more information about the packages we're using in this lab...
+# ?RSiena
+# ?sienaNet
+```
+
+# Lab 4a: Stochastic Actor-Oriented Models (SAOMs)
+
+You will be using data from the [*Teenage Friends and Lifestyle Study*](https://www.stats.ox.ac.uk/~snijders/siena/s50_data.htm). The dataset includes 3 network files containing friendship relationships between 50 teenage girls recorded at three consecutive points in time. (Note that there is a tie from A to B, if A mentions B as a friend).
+
+1\. s50-network1.dat
+
+2\. s50-network2.dat
+
+3\. s50-network3.dat
+
+The data also includes information about:
+
+1.  The *drug* use of the 50 female students (s50-drugs.dat). The drug behavior variable has four levels: 1 (non), 2 (tried once), 3 (occasional) and 4 (regular).
+
+2.  The *smoking behavior* of the 50 female students (s50-smoke.dat): 1 (does not smoke), 2 (smokes occasionally) and 3 (smokes regularly).
+
+3.  The *alcohol consumption* (s50-alcohol.dat). It has five levels: 1 (does not drink alcohol), 2 (once or twice a year), 3 (once a month), 4 (once a week) and 5 (more than once a week).
+
+```{r}
+#| label: load data
+#| echo: false
+#| output: false
+#| message: false
+# ------------------------------------------------------------------------------------
+# Load data
+# ------------------------------------------------------------------------------------
+
+# Read in friendship data and convert to matrix format
+# note that this data is in the format of friendship nomination adjacency matrices
+friend.data.w1 <- as.matrix(read.table("s50-network1.dat"))
+friend.data.w2 <- as.matrix(read.table("s50-network2.dat"))
+friend.data.w3 <- as.matrix(read.table("s50-network3.dat"))
+
+# Here we will load in data on alcohol, drugs, and smoking behavior
+# note that this data is provided in three columns, each column representing a moment in time
+# each row represents data from a unique individual
+alcohol <- as.matrix(read.table("s50-alcohol.dat"))
+drugs   <- as.matrix(read.table("s50-drugs.dat")) 
+smoke   <- as.matrix(read.table("s50-smoke.dat"))
+
+# Convert from matrix to network format
+net1 <- as.network(friend.data.w1)
+net2 <- as.network(friend.data.w2)
+net3 <- as.network(friend.data.w3)
+```
+
+# **PART I: Constructing Hypotheses (30 points)**
+
+Formulate hypotheses using network terminology based on the following SIENA terms (indicated in square brackets). Please check [the RSiena Manual](https://www.stats.ox.ac.uk/~snijders/siena/RSiena_Manual.pdf) (starting on p. 130) for the term definitions. You’ll test the hypotheses that you’ll construct here in Part II.
+
+## Relational Hypotheses **(25 pts)**:
+
+### H1: Low Outdegree Density \[outdegree\]
+
+*Hypothesis 1: The probability of having a friendship relation between students will be lower over time than expected by random chance.*
+
+### H2: Reciprocity \[reciprocity\] (5 points)
+
+*Hypothesis 2: The probability of ...*
+
+### H3: Transitivity \[gwespFF\] (5 points)
+
+### H4: Ego’s drug behavior \[egoX\] (5 points)
+
+### H5: Alter’s drug behavior \[altX\] (5 points)
+
+### H6: Homophily on the basis of drug behavior \[sameX\] (5 points)
+
+## Drug Behavior Hypothesis **(5 pts)**:
+
+### H7: Assimilation of drug behavior \[totSim\] (5 points)
+
+# **PART II: Hypothesis Testing (70 points)**
+
+## Visualization **(5 points)**
+
+#### A visual inspection of the adjacency matrices may help in highlighting how friendship changes at the three times. Include the sociomatrix plots in your report. Discuss what you observe from the plots (e.g., How does friendship change over time? Are the plots becoming denser over time? Is friendship between students mutual? Is there anyone who is nominated a lot by others? Is there anyone who nominates a lot of friends?)
+
+*Insert response here*
+
+```{r}
+#| label: plot sociomatrix
+#| echo: false
+# plot sociomatrices - the filled cells indicate 1 (there is a tie), while blank cells indicate 0 (no tie)
+plot.sociomatrix(net1,drawlab=F,diaglab=F,xlab='friendship at t1') ## if drawlab = T, you'll see the labels of the nodes
+plot.sociomatrix(net2,drawlab=F,diaglab=F,xlab='friendship at t2')
+plot.sociomatrix(net3,drawlab=F,diaglab=F,xlab='friendship at t3')
+```
+
+## Siena Modeling **(10 points)**
+
+We will create a siena data object including the longitudinal friendship networks and the drug behavioral variable. To do this, we will create the following objects in R:
+
+1\. dependent variables
+
+2\. explanatory (independent) variables
+
+3\. combination of dependent and explanatory variables
+
+### What are the dependent variables that are created in the chunk below? (1 pt)
+
+*Insert response here*
+
+```{r}
+#| label: define dvs
+#| echo: false
+#| output: false
+
+# 1. Dependent variables
+
+# Create objects for the friendship dependent variables:
+friendship <- sienaNet(array(c(friend.data.w1, friend.data.w2, friend.data.w3), dim=c(50, 50, 3)))
+
+# Create a smoking behavior variable object with the extra argument type="behavior".
+# (Non-mentioned attributes get the default value, and in this case oneMode is the default.)
+smokingbeh <- sienaNet(smoke, type="behavior")
+
+# Create a drug behavior variable object
+drugbeh <- sienaNet(drugs, type="behavior")
+
+# This shows that next to one-mode (unipartite) and behavior dependent variables,
+# also two-mode (bipartite) dependent variables are possible.
+```
+
+Now we will construct objects for the explanatory (independent) variables.
+
+There are five types of independent variables:
+
+-   coCovar: Constant actor covariates
+
+-   varCovar: Time-varying (changing) actor covariates
+
+-   coDyadCovar: Constant dyadic covariates
+
+-   varDyadCovar: Time-varying dyadic covariates
+
+-   compositionChange: Composition change indicators
+
+### What are the explanatory variables that are created in the chunk below? (1 pt)
+
+*Insert response here*
+
+```{r}
+#| label: define ivs
+#| echo: false
+#| output: false
+
+# 2. Explanatory (independent) variables
+
+# You can get help about this by uncommenting the following requests:
+# ?sienaDataCreate
+# ?coCovar            
+# ?varCovar           
+# ?coDyadCovar        
+# ?varDyadCovar       
+# ?sienaCompositionChange
+
+# The variables available for this dataset all are time-varying actor covariates.
+# For illustrative purposes, we use smoking as observed at the first wave
+# as a constant covariate:
+smoke1 <- coCovar(smoke[,1])
+
+# For illustrative purposes, we use drug as observed at the first wave
+# as a constant covariate:
+drug1 <- coCovar(drugs[,1])
+
+# This selects the first column of smoke and drug, which contains the first wave observations,
+# and makes it available as a constant covariate.
+# We use the drinking data as a changing covariate.
+# The function varCovar creates a changing covariate object from a matrix;
+# the name comes from 'varying covariate'. 
+drink <- varCovar(alcohol)
+
+# The information request
+attributes(drink)
+# will tell you the information that R now has added to the drink data.
+```
+
+The function sienaDataCreate creates a Siena data object from input networks, covariates and composition change objects; the objects that were created earlier by sienaNet will have the role of dependent variables, and similarly the other roles are predetermined by creation by the functions coCovar, varCovar, coDyadCovar, varDyadCovar, and sienaCompositionChange.
+
+### How does the mydata variable differ from the mybehdata variable? Identify which dependent and explanatory variables differ between the two objects. (4 pts)
+
+*Insert response here*
+
+```{r}
+#| echo: false
+#| output: false
+
+# 3. Combine the dependent and independent variables:
+
+# Here we present two different versions of a Siena data object:
+mydata <- sienaDataCreate(friendship, smoke1, drug1, drink)
+mybehdata <- sienaDataCreate(friendship, drugbeh)
+
+# To compare their features, you can uncomment the following two lines:
+# mydata
+# mybehdata
+
+# These will give you information about dependent variables, observations, etc.
+```
+
+You will run the print01report function which creates an output file in your working directory. Open the output file (if you use the provided script, s50_3_init.txt) where you can see data descriptions. Inspecting this is important because it serves as a check and also contains a number of descriptives.
+
+For example, you can see that the third wave data for alcohol are not used. This is because changing covariates are assumed to be constant from one wave until immediately before the next wave, so that the values for the last wave are ignored.
+
+### In the output file, how many friendship relations were created and dissolved between period 1 and 2? How many students increased their use of drugs or decreased the use of drugs between the same periods? (2 pts)
+
+*Insert response here*
+
+```{r}
+#| echo: false
+#| output: false
+
+# We will produce a data description which is available now:
+print01Report(mybehdata, modelname = 's50_3_init')
+
+# Uncomment this line and run it to view your print01Report
+# file.show("s50_3_init.txt")
+```
+
+Using your hypotheses, you can begin to construct a list of parameters (effects) to test using your Siena model. Create a data frame of effects using the getEffects function. The created data frame will include a number of extra properties for use with RSiena. We will also manually add the effects of triadic closure, the effects of drug use on friendship formation (i.e. the effects of the ego drug behavior, the alter drug behavior, and if ego and alter are the same in their drug behavior –both drug user or non-drug user) using the includeEffects function.
+
+### How many effects were generated from the getEffects function? (1 pt)
+
+*Insert response here*
+
+```{r}
+#| echo: false
+#| output: false
+
+myeff <- getEffects(mybehdata)
+myeff
+
+# density, reciprocity
+# here we add gwespFF (transitivity term) - parameter specifies an alpha value and we set 69 (i.e., 0.69)
+myeff <- includeEffects(myeff, gwespFF, parm = 69)
+		
+# drug behaviour, we need to first include sender, receiver and homophily effects 
+# of drug for friendship formation:
+myeff <- includeEffects(myeff, egoX, altX, sameX, interaction1 = "drugbeh")
+
+# For the influence part, i.e. the effect of the network on behaviour, we specify the following
+# effects: Now indegree, outdegree and assimilation effects for drug
+myeff <- includeEffects(myeff, outdeg, name = "drugbeh", totSim, interaction1 = "friendship")
+
+# We check the results again:
+myeff
+# effectsDocumentation(myeff)
+```
+
+Now that we have included the effects of all of a node’s friends’ drug behavior on the node’s own drug behavior, we can estimate the specified model and effects to the data using the function siena07. This requires the data specification, the effects specification, and a number of parameters (or settings) for the estimation algorithm. The latter are contained in an object created by the function sienaModelCreate.
+
+For the purpose of this assignment, only the two parameter options are included.
+
+-   The projname parameter specifies the name of the output file (projname.txt) that will save to your working directory.
+
+    -   The default name (used if no name is given) is Siena.
+
+    -   New estimation runs will append to the output file, and a new call to print01Report will overwrite it.
+
+-   The useStdInits parameter determines the initial values used for the estimation algorithm.
+
+    -   If useStdInits = TRUE, standard initial values are used.
+
+    -   If useStdInits = FALSE, the initial values that are contained in the "initialValue" column of the effects object (called myeff) are used.
+
+A new window labeled “Siena07” with a picture of an old building should pop up, showing the iterations of simulations R goes through. The window should close after the simulations complete.
+
+-   The batch=FALSE parameter opens a graphical user interface
+
+-   The verbose=F parameter will send diagnostic information to the console during the estimation, and results after the estimation (these results are also copied to the output file projname.txt)
+
+-   The returnDeps=TRUE parameter includes the simulated networks in the fitted object named sims which will contain a list (each iteration) of lists (each data object) of lists (each dependent network or behavior variable) of edgelists for networks or vectors for behavior variables.
+
+::: {.callout-note style="color: purple"}
+Note: You will need to run the chunk below manually (using the run all chunks above button will not work) because we set the command eval: false. This will ensure that the model which you are interpreting matches the model in your rendered pdf.
+:::
+
+### What is the initial value for the drugbeh linear shape parameter? (1 pt)
+
+*Insert response here*
+
+```{r}
+#| label: estimate parameters
+#| message: false
+#| echo: false
+#| eval: false
+
+# You can look at the help provided below to learn more about all the parameter options that you could include
+# ?sienaModelCreate
+
+mymodel <- sienaAlgorithmCreate(useStdInits = FALSE, projname = 's50_3', seed = 42)
+# myeff
+
+# Below we shall see how these initial values can be altered.
+# The function siena07 fits the specified model to the data and produces a "sienaFit" object
+ans1 <- siena07(mymodel, data=mybehdata, effects=myeff, batch=FALSE, verbose=F, returnDeps = TRUE)
+```
+
+## Model Convergence **(10 points)**
+
+We will need to assess model convergence and potentially correct our model until we can achieve a desired convergence ratio.
+
+All results can also be viewed externally in the output file projname.txt (s50_3.txt) which is written in the current directory. In the external output file, these are called "t-ratios for deviations from targets".
+
+To understand the table produced, note that the "t ratio" is the t-statistic for convergence checking, NOT the t-statistic for testing the significance of this effect! (See Section 6.3.2 of the manual linked [here](https://www.stats.ox.ac.uk/~snijders/siena/RSiena_Manual.pdf))
+
+\*\[Remember, a \|t-ratio\| \< 0.1 means that the parameter has converged to a reliable value. An overall maximum convergence ratio \< 0.25 indicates the model convergence is satisfactory.
+
+### Please update your model until convergence ratios are satisfactory (5 pts)
+
+::: {.callout-note style="color: purple"}
+You will iteratively test your model convergence in the following chunks, saving your final model only once it has converged. Once your model has converged, you may skip the following chunks until you arrive at the section saying "Provide Model Convergence Results"
+:::
+
+```{r}
+#| label: observe initial results
+#| echo: false
+#| output: false
+#| eval: false
+
+# The most basic description of the results is obtained by running: 
+ans1 
+
+# If you have achieved a satisfactory model, store the model:
+saveRDS(ans1, "ans1.rds")
+
+# You can get a more extensive report by uncommenting the following line of code:
+# summary(ans1)
+```
+
+If you need to improve model convergence, please run through each of the following chunks one-by-one until your model achieves satisfactory convergence.
+
+The first thing to do is to rerun the original model again until all t-ratios are close to or less than \|0.1\|.
+
+```{r}
+#| label: Improving model convergence pt. 1
+#| echo: false
+#| eval: false
+#| output: false
+
+# here is the first step to take to "fix" model convergence
+# below we have the same code that we used for the original model
+ans1 <- siena07(mymodel, data=mybehdata, effects=myeff, batch=FALSE, verbose=F, returnDeps = TRUE)
+# then check the new results to see whether the model and parameters converged:
+ans1
+
+# If you have achieved a satisfactory model, store the model:
+saveRDS(ans1, "ans1.rds")
+```
+
+If the values are close to but still not less than \|0.1\|, you can update the initial values with the results of the last estimation. You can re-run the following chunk multiple times.
+
+```{r}
+#| label: Improving model convergence pt. 2
+#| echo: false
+#| eval: false
+#| output: false
+
+# to do this, use the prevAns parameter as in the following line of code:
+ans1 <- siena07(mymodel, data=mybehdata, effects=myeff, prevAns=ans1, batch=FALSE, verbose=FALSE, returnDeps = TRUE)
+# then check the new results to see whether the model and parameters converged:
+ans1
+
+# If you have achieved a satisfactory model, store the model:
+saveRDS(ans1, "ans1.rds")
+```
+
+If you still don't have good convergence, try using different initial values. So far, we set the parameter option useStdInits = FALSE to make the estimation start with the initial values in the effects object. Another more flexible way for determining initial values is by setting useStdInits = TRUE in sienaModelCreate. This will make each estimation run start with standard initial values.
+
+```{r}
+#| label: Improving model convergence pt. 3
+#| echo: false
+#| eval: false
+
+# You can change this by running the following line of code:
+mymodel$useStdInits <- TRUE
+# Then run the model estimation again (not using prevAns this time) by running:
+ans1 <- siena07(mymodel, data=mybehdata, effects=myeff, batch=FALSE, verbose=FALSE, returnDeps = TRUE)
+# then check the new results to see whether the model and parameters converged:
+ans1
+
+# If you have achieved a satisfactory model, store the model:
+saveRDS(ans1, "ans1.rds")
+```
+
+If you still don't have good model and parameter convergence, please reach out to a TA!
+
+### Provide Model Convergence Results:
+
+\(a\) Include a table including convergence t-ratios and overall maximum convergence ratio in your report. (2 pts)
+
+```{r}
+#| label: output final model
+#| echo: false
+
+# output the saved model
+ans1 <- readRDS("ans1.rds")
+ans1
+```
+
+\(b\) Explain whether your variables and model are converged based on your convergence t-ratios and overall maximum convergence ratio (3 pts).
+
+*Insert interpretation here*
+
+## Model Interpretation **(35 points)**
+
+\(a\) Include another table including the estimates, standard errors and p-values (or estimate/standard error) in your report.
+
+```{r}
+#| label: print the results
+#| echo: false
+
+# Once you obtain satisfactory convergence, create a table of results
+if (!"texreg" %in% installed.packages()) install.packages("texreg")
+library(texreg)
+# texreg(ans1) ## for LaTex
+screenreg(ans1)
+```
+
+\(b\) Use the estimates and p-value (or estimate/standard error) to explain whether your hypotheses (7 hypotheses in total) are supported or not. Provide interpretations of the estimates and discuss if the results make sense. [**When you interpret the results, you should convert log-odds ratios (estimates) into either log-odds or probabilities.**]{.underline}
+
+### H1: Low Outdegree Density \[outdegree\]
+
+### H2: Reciprocity \[reciprocity\]
+
+### H3: Transitivity \[gwespFF\]
+
+### H4: Ego’s drug behavior \[egoX\]
+
+### H5: Alter’s drug behavior \[altX\]
+
+### H6: Homophily on the basis of drug behavior \[sameX\]
+
+### H7: Assimilation of drug behavior \[totSim\]
+
+## Goodness of fit **(10 points)**
+
+Report the goodness of fit for your model with regard to in-degree and out-degree distributions. Include the plots and interpret the results of each plot.
+
+```{r}
+#| label: gof
+#| echo: false
+# --------------------------------------------------------------------------
+# Goodness-of-fit
+# --------------------------------------------------------------------------
+
+# Goodness of fit test
+gofin  <- sienaGOF(ans1, IndegreeDistribution, verbose=FALSE, join=TRUE, varName="friendship")
+plot(gofin,violin = F)
+
+gofout <- sienaGOF(ans1, OutdegreeDistribution, verbose=FALSE, join=TRUE, varName="friendship")
+plot(gofout,violin = F)
+
+```
+
+## Disclose AI Use
+
+I used ... to generate ... for this lab
+
+------------------------------------------------------------------------
+
+Check your submission for grammar - points may be deducted for lack of clarity.
+
+Click 'Render' button at the top of the screen, or press cmd + shift + k. Note. It might take some time for you computer to render this document as a PDF, since it will be running all code chunks.
+
+Deliverables to submit on Canvas:
+
+1.  Your report as a .pdf file
+2.  Your code as a .qmd file
+3.  Your data as a .RData file
+
+```{r}
+save.image(file = "lab4a.RData")
+```
+
+Please upload each file separately -- do not upload as a zip file! *(Please)*

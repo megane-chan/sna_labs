@@ -1,0 +1,602 @@
+---
+title: "Lab 5"
+author: "Your Name"
+date: today
+format: 
+  pdf:
+      output-file: "lab5_your_name"
+      output-ext: "pdf"
+      toc: true
+      toc-depth: 4
+      shift-heading-level-by: 2
+      fig-pos: "H"
+      fig-cap-location: top
+      geometry:
+        - top=1in
+        - right=.8in
+        - bottom=1in
+        - left=.8in
+      link-citations: true
+      linkcolor: blue
+      include-in-header: 
+        text: |
+          \usepackage{fancyhdr}
+          \usepackage{titling}
+          \pagestyle{fancy}
+          \fancyhf{}
+          \renewcommand\maketitle{
+            \fancyhead[C]{
+              \thetitle
+              \ifx \theauthor\empty  \else \ – \theauthor \fi
+              \ifx \thedate\empty  \else \ – \thedate \ \fi
+            }
+          }
+          \fancyfoot[C]{\thepage}
+---
+
+```{r}
+#| label: libraries
+#| echo: false
+#| output: false
+#| message: false
+
+# Start with a clear environment
+rm(list=ls())
+
+# Load necessary packages
+list.of.packages <- c("mvtnorm", "xtable","statnet","dplyr", "MASS", "coda", "devtools")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+library(devtools)
+library(mvtnorm)
+library(xtable)
+library(statnet)
+library(dplyr)
+library(MASS)
+library(coda)
+
+
+source("https://raw.githubusercontent.com/johankoskinen/ALAAM/main/MultivarALAAMalt.R") ## Bayesian ALAAM has not yet been released as an R library so we are using code from the github of the package creator, Johan Koskinen, Professor of Statistics at the University of Stockholm
+# this will add lots of functions into your environment
+
+# ------------------------------------------------------------------------------
+# Set the working directory:
+# Session > Set Working Directory > To Source File Location
+# ------------------------------------------------------------------------------
+
+list.files() # List the files in the current working directory to see if you're in the right directory
+# you should see all of the assignment data files listed here
+
+```
+
+# Lab 5: Autologistic Actor-Attribute Models (ALAAMs)
+
+In this lab, you will be building, estimating, and interpreting the results of the Autologistic Actor Attribute Model (ALAAM) using R to examine the effects of network ties on certain behaviors. The R script is based on a 2022 paper on Bayesian Analysis of Social Influence and workshop material by Johan Koskinen, a Lecturer in Statistics at Stockholm University. In this code, they extended on current approaches for fitting ALAAMs by presenting a comprehensive Bayesian inference scheme that supports testing of dependencies across subsets of data and the presence of missing data.
+
+We will be using survey data collected by Chunke Su, an Associate Professor in the Department of Communication at the University of Texas at Arlington. The data consists of individual and relational information about 200 employees across 31 organizational teams in the U.S. and China. Table 1 (located at the end of this document) gives a summary of the subset of data provided for this assignment.
+
+The goal of this assignment is to predict employees' tendency to hide knowledge from their team members based on their workplace communication network and other attributes. We will compare the knowledge hiding behavior of U.S.- and China-based teams.
+
+::: {.callout-note style="color: purple"}
+Please do NOT disseminate the code or data used in this assignment without permission.
+:::
+
+```{r}
+#| label: load data
+#| echo: false
+#| output: false
+#| message: false
+
+
+################################################################################
+# Part I: Dataset
+################################################################################
+
+# Read in data files -----------------------------------------------------------
+# Adjacency matrices (which contain the network information about who communicates with whom at work)
+adj_US <- as.matrix(read.csv("WCOM_US.csv", row.names=1, header=T))
+adj_China <- as.matrix(read.csv("WCOM_China.csv", row.names=1, header=T))
+
+# Attribute dataframes (which contain all of the employee attributes)
+att_US <- read.csv("attributes_US.csv", header=T)
+att_China <- read.csv("attributes_China.csv", header=T)
+
+# Create a network object from the adjacency matrix
+net_US <- as.network(adj_US, directed=T)
+net_China <- as.network(adj_China, directed=T)
+
+# Calculate network-dependent variables ----------------------------------------
+# Function to calculate network-dependent variables
+calculate_network_vars <- function(adj, net, att) {
+  # Inputs: Adjacency matrix, network object, and attribute dataframe
+  # Output: New attribute dataframe which includes the network-dependent variables
+  
+  n <- nrow(adj)
+  
+  # Calculate structural effects
+  structural_effects <- data.frame(
+    out.degree <- matrix(rowSums(adj), n, 1), # number of ties sent
+    in.degree <- matrix(colSums(adj) , n, 1), # number of ties received
+    rec.ties <-  matrix(rowSums(adj * t(adj)), n , 1), # number of ties that are mutual
+    in.two.star <- matrix(choose(in.degree,2),n,1), #  in-stars reflecting dispersion in popularity
+    out.two.star <- matrix(choose(out.degree,2),n,1), #  out-stars reflecting dispersion in activity
+    mix.two.star <- in.degree*out.degree - rec.ties, # correlation between indegree and outdegree
+    in.three.star <- matrix(choose(in.degree,3),n,1), # further measure of in-degree heterogeneity
+    out.three.star <- matrix(choose(out.degree,3),n,1), # further measure of out-degree heterogeneity
+    triangles <- rowSums(adj * (adj %*% t(adj))) # embedded in transitive triads
+  )
+  colnames(structural_effects) <- c("out.degree", "in.degree", "reciprocity", "in.two.star", "out.two.star", "mix.two.star", "in.three.star", "out.three.star", "transitive.triangles")
+  
+  # Calculate alter effects
+  alter_effects <- data.frame(
+    alt.out.av.female = ifelse(structural_effects$out.degree == 0, NA, (adj %*% (net %v% "gender_female")) / structural_effects$out.degree),
+    alt.out.av.homophily.education = ifelse(structural_effects$out.degree == 0, NA, ((adj %*% (net %v% "education")) * (net %v% "education")) / structural_effects$out.degree)
+  )
+  colnames(alter_effects) <- c("alt.out.av.female", "alt.out.av.homophily.education")
+  
+  # Combine calculated variables with the attribute dataframe
+  att <- cbind(att, structural_effects, alter_effects)
+  
+  return(att)
+}
+
+# Calculate network-dependent variables for US and China using the above function
+att_US <- calculate_network_vars(adj_US, net_US, att_US)
+att_China <- calculate_network_vars(adj_China, net_China, att_China)
+```
+
+# PART I: Dataset
+
+First, read in the adjacency matrices and attribute data frames for both the U.S. and China-based teams. Construct network objects from the adjacency matrices.
+
+Next, using the adjacency matrices, network objects, and attribute data frames as inputs, calculate the following network-dependent variables for all employees in each network. We will use a subset of these variables in our ALAAM models, however all calculations are included for your reference.
+
+**Network-dependent structural variables:**
+
+*out.degree:* number of ties sent
+
+*in.degree:* number of ties received
+
+*rec.ties:* number of mutual ties
+
+*in.two.star:* in-stars reflecting dispersion in popularity
+
+*out.two.star:* out-stars reflecting dispersion in activity
+
+*mix.two.star:* correlation between indegree and outdegree (two-path)
+
+*in.three.star:* further measure of in-degree heterogeneity
+
+*out.three.star:* further measure of out-degree heterogeneity
+
+*triangles:* embedded in transitive triads
+
+**Network-dependent alter variables:**
+
+*alt.out.av.female:* average number of ties sent to female team members
+
+*alt.out.av.homophily.education:* average number of ties sent to team members who share the same level of education as the sender
+
+# PART II: Hypotheses
+
+In this lab assignment you will test the following hypotheses for each location:
+
+#### **Hypothesis 1:** There is a positive contagion effect for knowledge hiding.
+
+#### **Hypothesis 2:** Employees who are more educated are more likely to report knowledge hiding.
+
+#### **Hypothesis 3:** Female employees are more likely to report knowledge hiding.
+
+#### **Hypothesis 4:** Employees who have been working with their current team longer are more likely to report knowledge hiding.
+
+#### **Hypothesis 5:** Employees who report frequent work-related communications with more team members are more likely to report knowledge hiding.
+
+Based on the given hypotheses, binarize each employees' knowledge hiding behavior value by dichotomizing at the within-team mean. Call this variable *knowledge_hiding_binary*. Next, create a subset dataframe called "covs" with only the following variables to include in our ALAAMs: *age, education, gender_female, tenure_current_team,* and *out.degree.*
+
+```{r}
+#| label: hypothesis
+#| echo: false
+#| output: false
+##################################################################################
+# Part II: Hypotheses
+##################################################################################
+# see the hypotheses that you should test in the lab assignment description file
+# based on the hypotheses, binarize the dependent variable and 
+# create a covariates dataframe (called "covs") with the subset of variables that we should include in the model
+
+# Choose and binarize dependent variable (DV) ----------------------------------
+# Dichotomize the DV (knowledge_hiding) at the within-team mean
+att_US$knowledge_hiding_binary <- ifelse(att_US$"knowledge_hiding" >= ave(att_US$"knowledge_hiding", att_US$team_id, FUN = function(x) mean(x)), 1, 0)
+att_China$knowledge_hiding_binary <- ifelse(att_China$"knowledge_hiding" >= ave(att_China$"knowledge_hiding", att_China$team_id, FUN = function(x) mean(x)), 1, 0)
+
+att_US <- att_US %>% relocate(knowledge_hiding_binary, .after = knowledge_hiding)
+att_China <- att_China %>% relocate(knowledge_hiding_binary, .after = knowledge_hiding)
+
+# Choose independent variables ("covariates") ----------------------------------
+chosenVars <- c(
+  "age",
+  "education",
+  "gender_female",
+  "tenure_current_team",
+  "out.degree"
+)
+numcovs <- length(chosenVars) # number of covariates
+
+# subset these chosen variables from the larger attribute dataframe into a smaller one called "covs"
+covs_US <- att_US[, chosenVars] 
+covs_China <- att_China[, chosenVars] 
+
+```
+
+# PART III: Initializing the Model:
+
+Follow the instructions provided in the code to format the dependent variable and covariates as required for ALAAM.
+
+```{r}
+#| label: simple model
+#| echo: false
+#| output: false
+###################################################################################
+# Part III: Initializing the Model
+###################################################################################
+
+# Format Dependent Variable ----------------------------------------------------
+DV_US <- att_US[, "knowledge_hiding_binary"]
+DV_China <- att_China[, "knowledge_hiding_binary"]
+
+# Format Covariates ------------------------------------------------------------
+# convert all values to numeric
+covs_US <- covs_US %>% mutate_if(is.character,as.numeric) 
+covs_China <- covs_China %>% mutate_if(is.character,as.numeric)
+
+# replace NAs with 0
+covs_US[is.na(covs_US)] = 0  
+covs_China[is.na(covs_China)] = 0 
+
+# convert the covs dataframe to a matrix object
+covs_US <- as.matrix(covs_US) 
+covs_China <- as.matrix(covs_China)
+```
+
+# Part IV: Running the Social Contagion Model **(92 pts)**
+
+## A. Simple social contagion model -- for U.S.-based teams **(41 points)**
+
+### A.1. Simple social contagion **(2 points)**
+
+Build the simple social contagion ALAAM by using the "BayesALAAM" function, taking *DV_US* as the dependent variable, *adj_US* as the network, and *covs_US* as the independent variables. Set contagion = 'simple' or just simply do not include that line (simple contagion is the default of the function). Set the number of iterations to 5,000. Call this model res.0_US. Include the final table that you get after running the model in your report.
+
+```{r}
+#| label: simple model 0
+#| echo: false
+###################################################################################
+# Part IV: Running the Social Contagion Model
+###################################################################################
+# Model A: US-based teams ------------------------------------------------------
+
+# Run 0 to create initial covariance matrix
+# You will see it says p: 7 because we included 5 covariates + 1 contagion + 1 intercept
+res.0_US <- BayesALAAM(y = DV_US,   # dependent variable
+                    ADJ = adj_US,  # network
+                    covariates = covs_US,   # covariates
+                    directed = T,        # directed / undirected network
+                    Iterations = 5000,   # number of iterations
+                    burnin = 100,
+                    contagion = c('simple'), # contagion effect(s)
+                    saveFreq = 5000
+                    # saveFreq = 500    # updating the save frequency allows you to monitor
+                                        # the parameter estimates more frequently
+)
+```
+
+### A.2. Effective sample sizes (ESS) **(5 points)**
+
+From the table you got in A.1 you see the effective sample sizes (ESS). What do the ESS numbers mean to you? What are good values for ESS in general?
+
+My ESS numbers ...
+
+### A.3. Markov chain Monte Carlo (MCMC) **(5 points)**
+
+Plot the MCMC output in trace plots and include them in your report. What do those plots tell you? (i.e. How are those plots supposed to look? Do they look as they are supposed to?)
+
+```{r}
+#| label: model 0 MCMC
+#| echo: false
+# Now taking a look at the MCMC output in trace plots:
+plot(ts(res.0_US$Thetas))
+```
+
+### A.4. Simple social contagion 2 (7 points)
+
+Improve the model by taking the Theta estimates from the model as inputs to another model, by setting Propsigma to the thetas obtained from the estimation in the BayesALAAM function. Also increase the iterations to 20,000. Call the model res.1_US. Include the final table that you get after running the model in your report. How do the ESS values obtained in this run compare to the values your described in A.2?
+
+```{r}
+#| label: model 1
+#| echo: false
+# You can improve the mixing by using a better proposal covariance
+# This proposal variance (covariance) matrix, directly regulates how big jumps we are proposing 
+# use the covariance matrix from the previous run 
+Propsigma <- cov(res.0_US$Theta)
+# and increase the number of iterations to 20,000 and run the model again
+res.1_US <- BayesALAAM(y = DV_US,
+                    ADJ = adj_US,
+                    covariates = covs_US,
+                    directed = T,
+                    Iterations = 20000,
+                    burnin = 100,
+                    contagion = c('simple'),
+                    saveFreq = 20000,
+                    # saveFreq = 500,
+                    PropSigma=Propsigma
+)
+```
+
+### A.5. Markov chain Monte Carlo (MCMC) 2 **(5 points)**
+
+Plot the MCMC output in trace plots for the improved model and include them in your report. How have those changed as compared to the ones in A.3?
+
+```{r}
+#| label: model 1 MCMC
+#| echo: false
+# Again, plot and examine the MCMC output in trace plots 
+plot(ts(res.1_US$Thetas))
+
+# If you are satisfied with the mixing shown in the trace plots, plot and save the posteriors draws to a PDF:
+# plotPost(ALAAMresult=res.1_US, figname="ALAAM_posteriors_US")
+```
+
+### A.6. Simple social contagion Summary **(2 points)**
+
+Using the "write.res.table" function, summarize the results of the res.1_US model and include the table in your report.
+
+```{r}
+#| label: model 1 summary
+#| echo: false
+#| 
+# If you are satisfied with the mixing shown in the trace plots, plot and save the posteriors draws to a PDF:
+# plotPost(ALAAMresult=res.1_US, figname="ALAAM_posteriors_US")
+# In the ACF plots (printed in the PDF above), 
+# you should see that lags 10 and 30 correspond to the output table from BayesALAAM
+
+# Since we are satisfied with the performance of the algorithm, produce a results table
+write.res.table(burnin=1, # should be set sufficiently high
+                datamat=res.1_US$Thetas, # the result from BayesALAAM
+                thin=1, # should be set so that SACF is sufficiently low, important for CI
+                tabname="ALAAM_results_US" ) # the name appended to the table that is saved
+temp <- read.csv( "ALAAM_results_US.csv" )
+temp <- cbind(temp, ESS=res.1_US$ResTab[,"ESS"])
+temp <- cbind(temp, SACF10=res.1_US$ResTab[,"SACF 10"])
+temp <- cbind(temp, SACF30=res.1_US$ResTab[,"SACF 30"])
+# write.csv(temp,  "ALAAM_results_US.csv", row.names=F)
+# file.show("ALAAM_results_US.csv")
+```
+
+### A.7. Hypotheses Interpretation **(15 points: 3 for each hypothesis)**
+
+Using the table in A.6, for each of Hypotheses 1 through 5: Decide on whether you reject or fail to reject the null hypothesis (that there's no conclusive effect) and if you reject the null hypothesis, decide on whether you accept or reject the proposed hypothesis based on the sign of the estimate. Interpret your estimate using a probability or odds-ratio and make sure it's understandable in plain English.
+
+(Hint: if 0 is included in the 95% credibility interval, the estimate is not conclusive.)
+
+#### **Hypothesis 1:** There is a positive contagion effect for knowledge hiding.
+
+...
+
+#### **Hypothesis 2:** Employees who are more educated are more likely to report knowledge hiding.
+
+#### **Hypothesis 3:** Female employees are more likely to report knowledge hiding.
+
+#### **Hypothesis 4:** Employees who have been working with their current team longer are more likely to report knowledge hiding.
+
+#### **Hypothesis 5:** Employees who report frequent work-related communications with more team members are more likely to report knowledge hiding.
+
+## B. Simple social contagion model -- for China-based teams **(41 points)**
+
+### B.1. Simple social contagion **(2 points)**
+
+```{r}
+#| label: simple modelCH 0
+#| echo: false
+# Model B: China-based teams ---------------------------------------------------
+
+# Run 0 to create initial covariance matrix
+# You will see it says p: 7 because we included 5 covariates + 1 contagion + 1 intercept
+res.0_China <- BayesALAAM(y = DV_China,   # dependent variable
+                       ADJ = adj_China,  # network
+                       covariates = covs_China,   # covariates
+                       directed = T,        # directed / undirected network
+                       Iterations = 5000,   # number of iterations
+                       burnin = 100,
+                       contagion = c('simple'), # contagion effect(s)
+                       saveFreq = 5000
+)
+```
+
+### B.2. Effective sample sizes (ESS) **(5 points)**
+
+From the table you got in A.1 you see the effective sample sizes (ESS). What do the ESS numbers mean to you? What are good values for ESS in general?
+
+My ESS numbers ...
+
+### B.3. Markov chain Monte Carlo (MCMC) **(5 points)**
+
+Plot the MCMC output in trace plots and include them in your report. What do those plots tell you? (i.e. How are those plots supposed to look? Do they look as they are supposed to?)
+
+```{r}
+#| label: modelCH 0 MCMC
+#| echo: false
+# Now taking a look at the MCMC output in trace plots:
+plot(ts(res.0_China$Thetas))
+```
+
+### B.4. Simple social contagion 2 (7 points)
+
+Improve the model by taking the Theta estimates from the model as inputs to another model, by setting Propsigma to the thetas obtained from the estimation in the BayesALAAM function. Also increase the iterations to 20,000. Call the model res.1_US. Include the final table that you get after running the model in your report. How do the ESS values obtained in this run compare to the values your described in B.2?
+
+```{r}
+#| label: modelCH 1
+#| echo: false
+# You can improve the mixing by using a better proposal covariance
+# This proposal variance (covariance) matrix, directly regulates how big jumps we are proposing 
+# use the covariance matrix from the previous run 
+Propsigma <- cov(res.0_China$Theta)
+# and increase the number of iterations to 20,000 and run the model again
+res.1_China <- BayesALAAM(y = DV_China,
+                       ADJ = adj_China,
+                       covariates = covs_China,
+                       directed = T,
+                       Iterations = 20000,
+                       burnin = 100,
+                       contagion = c('simple'),
+                       saveFreq = 20000,
+                       PropSigma=Propsigma
+)
+```
+
+### B.5. Markov chain Monte Carlo (MCMC) 2 (5 points)
+
+Plot the MCMC output in trace plots for the improved model and include them in your report. How have those changed as compared to the ones in B.3?
+
+```{r}
+#| label: modelCH 1 MCMC
+#| echo: false
+# Again, plot and examine the MCMC output in trace plots 
+plot(ts(res.1_China$Thetas))
+# If you are satisfied with the mixing shown in the trace plots, plot and save the posteriors draws to a PDF:
+# plotPost(ALAAMresult=res.1_China, figname="ALAAM_posteriors_China")
+```
+
+### B.6. Simple social contagion Summary (2 points)
+
+Using the "write.res.table" function, summarize the results of the res.1_US model and include the table in your report.
+
+```{r}
+#| label: modelCH 1 summary
+#| echo: false
+
+# If you are satisfied with the mixing shown in the trace plots, plot and save the posteriors draws to a PDF:
+plotPost(ALAAMresult=res.1_China, figname="ALAAM_posteriors_China")
+# In the ACF plots (printed in the PDF above), 
+# you should see that lags 10 and 30 correspond to the output table from BayesALAAM
+
+# Since we are satisfied with the performance of the algorithm, produce a results table
+write.res.table(burnin=1, # should be set sufficiently high
+                datamat=res.1_China$Thetas, # the result from BayesALAAM
+                thin=1, # should be set so that SACF is sufficiently low, important for CI
+                tabname="ALAAM_results_China" ) # the name appended to the table that is saved
+temp <- read.csv( "ALAAM_results_China.csv" )
+temp <- cbind(temp, ESS=res.1_China$ResTab[,"ESS"])
+temp <- cbind(temp, SACF10=res.1_China$ResTab[,"SACF 10"])
+temp <- cbind(temp, SACF30=res.1_China$ResTab[,"SACF 30"])
+write.csv(temp,  "ALAAM_results_China.csv", row.names=F)
+```
+
+### B.7. Hypotheses Interpretation **(15 points: 3 for each hypothesis)**
+
+Using the table in B.6, for each of Hypotheses 1 through 5: Decide on whether you reject or fail to reject the null hypothesis (that there's no conclusive effect) and if you reject the null hypothesis, decide on whether you accept or reject the proposed hypothesis based on the sign of the estimate. Interpret your estimate using a probability or odds-ratio and make sure it's understandable in plain English.
+
+(Hint: if 0 is included in the 95% credibility interval, the estimate is not conclusive.)
+
+#### **Hypothesis 1:** There is a positive contagion effect for knowledge hiding.
+
+...
+
+#### **Hypothesis 2:** Employees who are more educated are more likely to report knowledge hiding.
+
+#### **Hypothesis 3:** Female employees are more likely to report knowledge hiding.
+
+#### **Hypothesis 4:** Employees who have been working with their current team longer are more likely to report knowledge hiding.
+
+#### **Hypothesis 5:** Employees who report frequent work-related communications with more team members are more likely to report knowledge hiding.
+
+## C. Comparison of results **(10 points)**
+
+### C.1. U.S.-based and China based **(8 points)**
+
+Based on the results from A.7 and B.7, what can you conclude about the knowledge hiding tendencies of the U.S.-based employees versus China-based employees? Were the results directionally consistent across both countries? What about in magnitude (i.e., does one country exhibit stronger knowledge-hiding behavior)?
+
+### C.2. Researchers Degree of Freedom **(2 points)**
+
+How might the way we binarized the dependent variable (i.e., by dichotomizing at the within-team mean) have influenced the results?
+
+# Part V: Goodness-of-Fit (gof) Test **(8 pts)**
+
+Based on the posterior draws (the thetas) reported by the res.1 models for both the US and China with 20,000 iterations each, draw outcomes for goodness-of-fit for both models and include the table for each in your report. Interpret the gof results. (Hint: higher p-values mean better fit).
+
+```{r}
+#| label: GOF1 US
+#| echo: false
+#####################################################################################
+# Part V: Goodness-of-fit (GOF) test
+#####################################################################################
+#  US-based teams --------------------------------------------------------------
+
+# Based on the posterior draws in res.1_US$Thetas, draw outcomes for goodness-of-fit for the model
+sim.1_US <- get.gof.distribution(NumIterations=500, # number of vectors to draw
+                              res=res.1_US, # the ALAAM estimation object that contains model and results
+                              burnin=100, # number of iterations discarded from GOF distribution
+                              thinning = 1000, # number of iterations between sample points
+                              contagion ='simple') # should be the same as for model fitted
+
+# The object sim.1 contains the observed statistics, the goodness-of-fit 
+# distribution, and other outputs that are used for summarizing in the GOF table
+
+gof.table(obs.stats= sim.1_US$stats, # observed statistics included not fitted statistics
+          sim.stats= sim.1_US$Sav.gof, # simulated goodness-of-fit statistics
+          name.vec= sim.1_US$gof.stats.names, # names of statistics calculate, not all will be used if undirected
+          tabname='ALAAM_gof_US', # name of file saved
+          pvalues=T, # posterior predictive p-values
+          save.tab ='csv', # save a csv file or a LaTex file (for LaTex, update suffix from csv to tex)
+          directed=T)
+
+# file.show("ALAAM_gof_US.pdf")
+```
+
+```{r}
+#| label: GOF1 CHINA
+#| echo: false
+
+# China-based teams ------------------------------------------------------------
+
+# Based on the posterior draws in res.1_China$Thetas, draw outcomes for goodness-of-fit for the model
+sim.1_China <- get.gof.distribution(NumIterations=500, # number of vectors to draw
+                                 res=res.1_China, # the ALAAM estimation object that contains model and results
+                                 burnin=100, # number of iterations discarded from GOF distribution
+                                 thinning = 1000, # number of iterations between sample points
+                                 contagion ='simple') # should be the same as for model fitted
+
+# The object sim.1 contains the observed statistics, the goodness-of-fit 
+# distribution, and other outputs that are used for summarizing in the GOF table
+
+gof.table(obs.stats= sim.1_China$stats, # observed statistics included not fitted statistics
+          sim.stats= sim.1_China$Sav.gof, # simulated goodness-of-fit statistics
+          name.vec= sim.1_China$gof.stats.names, # names of statistics calculate, not all will be used if undirected
+          tabname='ALAAM_gof_China', # name of file saved
+          pvalues=T, # posterior predictive p-values
+          save.tab ='csv', # save a csv file or a LaTex file (for LaTex, update suffix from csv to tex)
+          directed=T)
+
+# file.show("ALAAM_gof_China.pdf")
+```
+
+## Disclose AI Use
+
+I used ... to generate ... for this lab
+
+------------------------------------------------------------------------
+
+Check your submission for grammar - points may be deducted for lack of clarity.
+
+Click 'Render' button at the top of the screen, or press cmd + shift + k. Note. It might take some time for you computer to render this document as a PDF, since it will be running all code chunks.
+
+Deliverables to submit on Canvas:
+
+1.  Your report as a .pdf file
+2.  Your code as a .qmd file
+3.  Your data as a .RData file
+
+```{r}
+#| label: save env
+save.image(file = "lab5.RData")
+```
+
+Please upload each file separately -- do not upload as a zip file! *(Please)*

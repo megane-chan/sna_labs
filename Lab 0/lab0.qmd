@@ -1,0 +1,158 @@
+---
+title: "Lab 0"
+author: "Your Name"
+date: today
+format: 
+  pdf:
+      toc: true
+      toc-depth: 4
+      shift-heading-level-by: 2
+      fig-pos: "H"
+      fig-cap-location: top
+      geometry:
+        - top=1in
+        - right=.8in
+        - bottom=1in
+        - left=.8in
+      link-citations: true
+      linkcolor: blue
+      include-in-header: 
+        text: |
+          \usepackage{fancyhdr}
+          \usepackage{titling}
+          \pagestyle{fancy}
+          \fancyhf{}
+          \renewcommand\maketitle{
+            \fancyhead[C]{
+              \thetitle
+              \ifx \theauthor\empty  \else \ – \theauthor \fi
+              \ifx \thedate\empty  \else \ – \thedate \ \fi
+            }
+          }
+          \fancyfoot[C]{\thepage}
+---
+
+Everything within the section above, demarcated by three dashes (---) is called a YAML header. We provide code for each lab containing a pre-formatted header, which will specify settings for the output format of your labs to look consistent and professional. We only ask that you update the document author to your name.
+
+## Before we start
+
+If you have zero to no experience with R, please take a look at this tutorial: [SICSS Boot Camp (Beta)](https://sicss.io/boot_camp/)
+
+At least do
+
+1.  Installing R and R Studio (14 minutes)
+
+2.  R Basics (17 minutes)
+
+If you are comfortable navigating R and are familiar with quarto, then feel free to skip lab 0.
+
+If you have never coded in your life, take a deep breath and don't worry! We will provide all the necessary resources for you to succeed - with just one expectation: **read the code**.
+
+## Intro to lab format and all other stuff
+
+What is [qmd](https://quarto.org/docs/computations/r.html), and and how to use it.
+
+Please run the following line in your *Terminal* (not the console!)
+
+> quarto install tinytex
+
+## Formatting text: pretty things and code chunks
+
+### This is a 3 level heading
+
+# This is a 1 level heading, a.k.a. title
+
+this is text
+
+```{r this is an R chunk}
+1 + 1
+```
+
+::: {.callout-note}
+## This is the title of the callout note
+
+This is a callout note. If you decide to resubmit a lab, please indicate any changes using this callout format.
+:::
+
+```{r}
+## this is a comment
+```
+
+```{r this is a chunk}
+print("I like networks 🌐")
+```
+
+## Lets save some characters into variables
+
+```{r}
+my_name <- "Megan"
+# my_name <- "Seva"
+
+print(my_name)
+```
+
+## how about some libraries (packages)
+
+```{r}
+#| output: false
+#| message: false
+
+#those comments will hide system messages from the console
+
+# install.packages("tidyverse")
+# install.packages("palmerpenguins")
+
+library(tidyverse)
+library(palmerpenguins)
+```
+
+## a bit of data science
+
+```{r}
+data(package = 'palmerpenguins')
+head(penguins)
+
+penguins |> 
+  count(species)
+```
+
+```{r output=FALSE}
+library(tidygraph)
+library(igraph)
+library(ggraph)
+```
+
+```{r}
+
+peng_island <- penguins |> 
+  count(species, island) 
+
+peng_island |> 
+  graph_from_data_frame() |> 
+  as_tbl_graph() |> 
+  ggraph(layout = "tree")+
+  geom_edge_link(aes(alpha = n))+
+  geom_node_label(aes(label = name))+
+  theme_void()+
+  ggtitle("Islands and penguins")
+```
+
+## let's save our data
+
+```{r}
+penguins |> 
+  head(20) |> 
+  write_csv("penguins20.csv")
+```
+
+```{r}
+penguins_20 <- read_csv("penguins20.csv")
+
+penguins_20
+```
+
+## AI use disclosure
+
+(In a few sentences describe how you used AI in this lab.)
+
+In this lab I used Github Copilot to help me to write this AI use disclosure.

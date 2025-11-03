@@ -1,0 +1,363 @@
+---
+title: "Lab 4b"
+author: "Your Name"
+date: today
+format: 
+  pdf:
+      output-file: "lab4b_your_name"
+      output-ext: "pdf"
+      toc: true
+      toc-depth: 4
+      shift-heading-level-by: 2
+      fig-pos: "H"
+      fig-cap-location: top
+      geometry:
+        - top=1in
+        - right=.8in
+        - bottom=1in
+        - left=.8in
+      link-citations: true
+      linkcolor: blue
+      include-in-header: 
+        text: |
+          \usepackage{fancyhdr}
+          \usepackage{titling}
+          \pagestyle{fancy}
+          \fancyhf{}
+          \renewcommand\maketitle{
+            \fancyhead[C]{
+              \thetitle
+              \ifx \theauthor\empty  \else \ – \theauthor \fi
+              \ifx \thedate\empty  \else \ – \thedate \ \fi
+            }
+          }
+          \fancyfoot[C]{\thepage}
+---
+
+::: {.callout-note style="color: purple"}
+**Important Note:** For Lab 4, you can choose between either Lab 4a [**OR**]{.underline} Lab 4b. You do not need to complete both.
+:::
+
+```{r}
+#| label: libraries
+#| echo: false
+#| output: false
+#| message: false
+
+# Lab 4b
+# Relational Event Models (REM)
+
+# Start with a clear environment
+rm(list=ls())
+
+# Load necessary packages
+if (!"relevent" %in% installed.packages()) install.packages("relevent","dplyr","igraph") ## for the install_version function
+library(relevent)
+library(dplyr)
+library(igraph)
+
+# ------------------------------------------------------------------------
+# Set the working directory:
+# Session > Set Working Directory > To Source File Location
+# ------------------------------------------------------------------------
+
+list.files() # List the files in the current working directory to see if you're in the right directory
+# you should see all of the assignment data files listed here
+```
+
+# Lab 4b: Relational Event Models (REMs)
+
+We will be fitting various models to understand communication patterns which unfold over time. Please explain which model best fits the data, and what each of the effects indicate about how communication evolved in the network. Your analysis should be based on the numbers as well as the context of emergency response. Summarize your findings in one cohesive report.
+
+The [dataset](https://psycnet.apa.org/record/2016-43095-005) is comprised of the communication log from a multiteam system participating in a simulated military scenario with the goal of removing insurgent activity or improvised explosive devices (IEDs) along the route to be taken by a humanitarian aid convoy. A multiteam system (MTS) is an organization of multiple teams working in a coordinated manner. The MTS in this lab is made up of 20 people organized into four teams of five people. Each of the four teams is given a separate geographical jurisdiction in which they are charged with detecting and neutralizing insurgent activity and IEDs. Participants are randomly assigned to a team, and also to a functional role within their team. Participants may be a team leader, one of two reconnaissance officers (in charge of detecting insurgent activity or IEDs), or one of two field specialists in charge of neutralizing insurgent activity or IEDs.
+
+All members of the MTS communicated with one another over Skype. Participants needed to 1) coordinate activities in the simulation, 2) share information about obstacles in their own or in other geographic jurisdictions, and 3) manage team cohesion/morale. The hypotheses you will be testing are in the context of anticipated behavior by members of the MTS.
+
+The dataset is comprised of the communication transcript for the mission. Each interaction is encoded with a sender of the message, receiver of the message, and time at which the message was sent. In addition to this information, the team membership and role assignment is given for each individual. From this data, we may create multiple types of statistics. The measures we test in this lab fall into four categories: (1) effects based on the length of time since an event previously occurred; (2) effects based on how many events have occurred previously; (3) effects based on attributes of the sender and/or receiver; and (4) effects based on the sequencing of multiple events. The sample hypotheses provided are based on the interpretation of these statistics.
+
+```{r}
+#| label: load data
+#| echo: false
+#| output: false
+
+# Set a seed
+start_time <- Sys.time()
+set.seed(42)
+
+# ------------------------------------------------------------------------
+# Load data
+# ------------------------------------------------------------------------
+
+# Load Data
+evtdata <- read.table('MTS19.tsv',
+                   header=TRUE, sep = "\t",
+                   stringsAsFactors=FALSE,
+                   strip.white=TRUE)[,1:4]
+
+# Extract Role and Team
+x <- t(simplify2array(strsplit(sort(unique(evtdata$sender)),'.',fixed=TRUE)))
+role <- x[,1]
+names(role) <- sort(unique(evtdata$sender))
+team <- x[,2]
+names(team) <- sort(unique(evtdata$sender))
+
+# Convert sender and receiver to id numbers
+id <- 1:20
+names(id) <- sort(unique(evtdata$sender))
+evtdata$sid <- id[evtdata$sender]
+evtdata$rid <- id[evtdata$receiver]
+
+
+# Format Time
+evtdata$time <- sapply(as.character(evtdata$eventMilitaryTime),
+                       function(x) sum(as.numeric(strsplit(x,':')[[1]])*c(60*60,60,1)))
+
+# Extract just the event data
+data <- data.frame(sid = evtdata$sid,
+rid = evtdata$rid,
+time=evtdata$time)
+
+# Keep only complete cases from one session
+data <- data[complete.cases(data),][1:1132,]
+
+# Set the first moment as zero and readjust the timeline
+
+data_rem <- data |> 
+  dplyr::mutate(time = time - min(time)) |> 
+  dplyr::select(time, sid, rid) |> 
+  dplyr::arrange(-time) |> 
+  dplyr::mutate(time = dplyr::row_number()-1)
+
+```
+
+# **PART I: Constructing Hypotheses to Test (30 points)**
+
+## Hypotheses
+
+Formulate hypotheses using network terminology based on the following REM terms \[indicated in square brackets\]. We have created Hypothesis 1, 4, and 5. Please create Hypothesis 2, 3a, and 3b.
+
+```{r}
+#| echo: false
+# to learn more about Effects that can be fit by rem.dyad and determined by the eponymous effects argument in rem.dyad:
+help(rem.dyad)
+```
+
+
+### Hypothesis 1: The likelihood of individual i sending a message to individual j is greater if (a) i has sent a message to j recently and (b) if j has sent a message to i recently.
+
+### Hypotheses 2 (the notion of “preferential attachment,” or the likelihood to contact popular targets \[NTDegRec\] (5 points)
+
+...
+
+### Hypothesis 3a & 3b (the notion of “homophily” for the same team (H3a) \[CovInt\], and the same role (H3b) \[CovInt\] (10 points)
+
+...
+
+### Hypothesis 4: The likelihood of individual i sending a message to individual j is greater if the message immediately preceding that event is j sending a message to i.
+
+### Hypothesis 5: When an individual i sends a message to another person j, that person has a greater likelihood of communicating with another individual k, thereby creating an information-sharing chain.
+
+# **PART II: Testing Hypotheses (70 points)**
+
+## Network Visualization **(5 points)**
+#### A visual inspection of the communication network may help in highlighting how the teams communicate. Include the network plots in your report. Discuss what you observe from the visualization (e.g., Are there any particular teams which appear to communicate more successfully than others? How do the teams communicate with each other?)
+
+*Insert response here*
+
+```{r}
+#| label: graph
+#| echo: false
+#| message: false
+
+
+net <- graph_from_adjacency_matrix(as.sociomatrix.eventlist(data_rem, 20),weighted=T)
+plot(net,
+     layout=layout_with_fr(net),
+     edge.color = adjustcolor('black',alpha=.3), 
+     edge.width=E(net)$weight*.2,
+     edge.arrow.size=.5,
+     vertex.label = NA,
+     vertex.color = as.factor(team),
+     vertex.shape = "square",
+     xlab = "Communication Events Network"
+     )
+legend('topleft',
+       legend=unique(team),
+       fill=c('#E69F00','#56B4E9','#009E73','#F0E442'))
+```
+
+## Model 1 - Simple Model **(10 points)**
+
+Let’s begin by fitting a very simple covariate model (model1) using the function FitEventNetworkCore that fits separate effects for repetition (H1a; RSndSnd) and reciprocity (H1b; RRecSnd) to see if prior events affect send/receipt rates differently.
+
+The summary of the model will produce a typical regression style output. Please include a table of the model results. Interpret the sign of the coefficient as well as the significance. What can you conclude with regards to repetition and reciprocity effects?
+
+```{r}
+#| label: model 1
+#| echo: false
+set.seed(42)
+
+stats_intercept = rep(1, 20)
+
+model1 <- rem.dyad(
+  data_rem, 
+  n = 20, 
+  effects = c("RSndSnd", "RRecSnd", "CovSnd"), 
+  covar = list(CovSnd = stats_intercept),
+  ordinal = FALSE, 
+  hessian = T)
+
+# please note that CovSnd.1 is the model intercept
+summary(model1)
+```
+
+## Interpret simple model **(5 points)**
+
+We interpret the coefficients in terms of *hazard rates*. In other words, when we take the exponential of the coefficient ($e^{coefficient}$), we get the relative likelihood of a particular event. How likely is it that an individual will send a message to their prior communication partner? What about someone responding to another?
+
+```{r}
+#| echo: false
+
+print("Model")
+model1$coef
+print("Exponential of the coefficient")
+exp(model1$coef)
+```
+
+## Model 2 - Adding Endogenous Parameters **(10 points)**
+
+Now, fit a second model (model2) that accounts for a small number of individuals that were highly active in terms of communication. Please include a table of the model results. We want to test for the notion of “preferential attachment,” or the likelihood to contact popular targets (H2). To do so, we fit another model (model1) and add the effect “Normalized Total Degree Received” (NTDegRec). Thus, this effect measures how often an individual was previously contacted. Interpret the model in context, as with the previous models. What is the effect of preferential attachment? What are the implications? 
+
+```{r}
+#| label: model 2
+#| echo: false
+# Model 2 -----------------------------------------------------------------
+
+set.seed(42)
+
+# Continue adding the second term: the Normalized Total Degree Received (NTDRec)
+model2 <- rem.dyad(
+  data_rem, 
+  n = 20, 
+  effects = c("RSndSnd", "RRecSnd", "NTDegRec", "CovSnd"), 
+  covar = list(CovSnd = stats_intercept),
+  ordinal = FALSE, 
+  hessian = T)
+
+## please note that CovSnd.1 is the model intercept
+summary(model2)
+```
+
+## Compare models 1 and 2 **(5 points)**
+
+Suppose we want to determine which model is a better fit for the data. We can use the BIC criterion to compare models; remember, given the same data, lower BIC is better. Which model do we prefer? 
+
+## Model 3 - Adding Exogenous Parameters **(10 points)**
+
+These groups have different teams and roles. Fit a model (model3) using the function SameConstGroup. This term captures tendencies to speak to other members of your team (H3a; CovInt team) and with your same role (H3b; CovInt role). Interpret the results.
+
+```{r}
+#| label: model 3
+#| echo: false
+# Model 3 -----------------------------------------------------------------
+
+# Continue adding the terms that capture the tendencies to speak to other members of your team (SameTeam) 
+# and with your same role (SameRole). 
+set.seed(42)
+model3 <- rem.dyad(
+  data_rem, 
+  n = 20, 
+  effects = c("RSndSnd", "RRecSnd", "NTDegRec", 
+              "CovInt", "CovSnd"), 
+  covar = list(
+    CovSnd = cbind(stats_intercept),
+    CovInt = cbind(team |> as.factor(), role |> as.factor())
+    ),
+  ordinal = FALSE, 
+  hessian = T)
+
+
+## please note that CovSnd.1 is the model intercept
+## CovInt.1 is CovInt for the team
+## CovInt.3 is CovInt for the role
+summary(model3)
+```
+
+## Compare models 2 and 3 **(5 points)**
+
+Compare this model 3 to model 2. Which model is better?
+
+## Model 4 - Adding Participation Shifts **(10 points)**
+
+Communication over electronic channels is governed by strong conversational norms, which among other things mandate systematic turn-taking reciprocity. Test for this in a new model (model4), via the use of participation shifts (P-shift), particularly the AB-BA shift (a tendency for B to call A, given that A has just called B). Interpret the model. Is there a tendency to immediately reciprocate communication (H4; PSAB.BA(data))? Is model4 preferable to model3?  To answer this question, investigate BIC scores for both models. What does this suggest about immediate response rates? Using the hazard rates, how likely is it that any given event is driven by a response? 
+
+```{r}
+#| label: model 4
+#| echo: false
+# Model 4 -----------------------------------------------------------------
+
+# Add the particularly the AB-BA shift (a tendency for B to call A, given that A has just called B). 
+set.seed(42)
+model4 <- rem.dyad(
+  data_rem, 
+  n = 20, 
+  effects = c("RSndSnd", "RRecSnd", "NTDegRec", 
+              "CovInt", "CovSnd", "PSAB-BA"), 
+  covar = list(
+    CovSnd = cbind(stats_intercept),
+    CovInt = cbind(team |> as.factor(), role |> as.factor())
+    ),
+  ordinal = FALSE, 
+  hessian = T)
+
+summary(model4)
+```
+
+## Model 5 - Adding additional P-shift Effects **(10 points)**
+
+What about other conversational norms? We may expect that the current participants in an interaction may be likely to initiate the next call, a tendency that can also be captured with P-shift effects. The “AB-BY” effect captures spread of information in a chain (H5; PSAB.BY(data)). Fit another model (model5) to test for this effect, and interpret the results. What do the sign and significance tell you about each effect? Interpret the implications for team functioning. Check BIC to see if we improved our model over the reciprocity model (model4).
+
+```{r}
+#| label: model 5
+#| echo: false
+# Model 5 -----------------------------------------------------------------
+
+# Add the particularly the AB-BY shift (it captures spread of information in a chain)
+set.seed(42)
+model5 <- rem.dyad(
+  data_rem, 
+  n = 20, 
+  effects = c("RSndSnd", "RRecSnd", "NTDegRec", 
+              "CovInt", "CovSnd", "PSAB-BA", "PSAB-BY"), 
+  covar = list(
+    CovSnd = cbind(stats_intercept),
+    CovInt = cbind(team |> as.factor(), role |> as.factor())
+    ),
+  ordinal = FALSE, 
+  hessian = T)
+
+summary(model5)
+```
+
+## Disclose AI Use
+
+I used ... to generate ... for this lab
+
+------------------------------------------------------------------------
+
+Check your submission for grammar - points may be deducted for lack of clarity.
+
+Click 'Render' button at the top of the screen, or press cmd + shift + k. Note. It might take some time for you computer to render this document as a PDF, since it will be running all code chunks.
+
+Deliverables to submit on Canvas:
+
+1.  Your report as a .pdf file
+2.  Your code as a .qmd file
+3.  Your data as a .RData file
+
+```{r}
+#| label: save env
+save.image(file = "lab4b.RData")
+```
+
+Please upload each file separately -- do not upload as a zip file! *(Please)*
